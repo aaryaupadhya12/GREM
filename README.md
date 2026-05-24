@@ -3,7 +3,7 @@ markdown_content = """# Gemini-Driven Knowledge Graph Embedding (KGE) Enhancemen
 
 This repository contains the architecture and implementation for an advanced Knowledge Graph Completion (KGC) framework. The system combines Knowledge Graph Embeddings (KGE), multi-agent reasoning layers powered by Google Gemini, and Group Relative Policy Optimization (GRPO) to construct a highly accurate, dynamic training and inference pipeline.
 
-![Training Pipeline](GREM\Images\Newer_RAG_Pipeline.png)
+![Training Pipeline](GREM\Images\RAG_Pipelien.png)
 
 ## Architecture Overview
 
