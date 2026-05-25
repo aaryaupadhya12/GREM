@@ -1,0 +1,26 @@
+
+# LangChain ecosystem
+langchain
+langchain-core
+langchain-community
+langchain-huggingface
+langchain-groq
+
+# LangSmith
+langsmith==0.8.5
+
+# Groq SDK
+groq
+
+# Hugging Face
+huggingface_hub
+transformers
+datasets
+
+sentence-transformers
+faiss-cpu
+
+# Utilities
+python-dotenv
+numpy
+pandas
