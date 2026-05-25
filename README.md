@@ -1,5 +1,5 @@
 # GREM
-markdown_content = """# Gemini-Driven Knowledge Graph Embedding (KGE) Enhancement Pipeline
+# Gemini-Driven Knowledge Graph Embedding (KGE) Enhancement Pipeline
 
 This repository contains the architecture and implementation for an advanced Knowledge Graph Completion (KGC) framework. The system combines Knowledge Graph Embeddings (KGE), multi-agent reasoning layers powered by Google Gemini, and Group Relative Policy Optimization (GRPO) to construct a highly accurate, dynamic training and inference pipeline.
 
@@ -84,10 +84,6 @@ The inference pipeline handles live link prediction queries sequentially to find
   * **MRR**: Mean Reciprocal Rank across the candidate space.
 
 ---
-
-## Configuration & Environment Setup
-
-### Prerequisites
 * Python 3.10+
 * MongoDB Atlas Cluster (with MCP support enabled)
 * Google Gemini API Credentials
