@@ -65,7 +65,7 @@ def build_record(r):
 def main():
     parser = argparse.ArgumentParser(description="Preprocess hard_failures.json for agent pipeline")
     parser.add_argument("--n", type=int, default=None, help="Subset size (default: full set)")
-    parser.add_argument("--input", type=str, default="hard_failures.json", help="Input file path")
+    parser.add_argument("--input", type=str, default=r"C:\Users\Aarya-2\Documents\ADOG\MARLOW AI\QGED_CODEX_M_L\Dataset\hard_failures.json", help="Input file path")
     parser.add_argument("--seed", type=int, default=42, help="Random seed for shuffle")
     args = parser.parse_args()
 
