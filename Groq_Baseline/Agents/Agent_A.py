@@ -1,4 +1,4 @@
-="""
+"""
 agent_a.py — Entity Overlap Reasoner
 
 Usage:
@@ -16,6 +16,11 @@ import os
 import time
 from groq import Groq
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
+
 # ── Config ────────────────────────────────────────────────────────────────────
 GROQ_API_KEY  = os.environ.get("GROQ_API_KEY_A")
 MODEL         = "llama-3.3-70b-versatile"
@@ -27,10 +32,11 @@ OUTPUT_PATH   = "outputs/agent_a_out.json"
 # ─────────────────────────────────────────────────────────────────────────────
 
 
+
 def load_system_prompt():
-    with open("context.md", "r") as f:
+    with open(r"C:\Users\Aarya-2\Documents\ADOG\MARLOW AI\QGED_CODEX_M_L\GREM\Groq_Baseline\Context\Context.md", "r") as f:
         context = f.read()
-    with open("agent_a.md", "r") as f:
+    with open(r"C:\Users\Aarya-2\Documents\ADOG\MARLOW AI\QGED_CODEX_M_L\GREM\Groq_Baseline\Agents\Agent_A.py", "r") as f:
         agent = f.read()
     return context + "\n\n" + agent
 

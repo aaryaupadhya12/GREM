@@ -6,6 +6,9 @@ Usage:
 
 Reads:  outputs/subset.json
 Writes: outputs/agent_b_out.json  (saves after every record)
+
+Set your API key:
+    export GROQ_API_KEY_B="gsk_..."
 """
 
 import json
@@ -13,13 +16,17 @@ import os
 import time
 from groq import Groq
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 # ── Config ────────────────────────────────────────────────────────────────────
 GROQ_API_KEY  = os.environ.get("GROQ_API_KEY_B")
 MODEL         = "llama-3.3-70b-versatile"
 MAX_TOKENS    = 80
 TEMPERATURE   = 0.0
 RATE_LIMIT_S  = 1.0
-INPUT_PATH    = "outputs/subset.json"
+INPUT_PATH    = os.environ.get("INPUT_PATH", "outputs/subset_bridge_full.json")
 OUTPUT_PATH   = "outputs/agent_b_out.json"
 # ─────────────────────────────────────────────────────────────────────────────
 
