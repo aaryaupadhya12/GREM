@@ -11,24 +11,24 @@ Set your API key:
     export GROQ_API_KEY_B="gsk_..."
 """
 
+from openai import OpenAI
 import json
 import os
 import time
-from groq import Groq
-
+from langsmith import traceable
 from dotenv import load_dotenv
-
+from langsmith.wrappers import wrap_openai
 load_dotenv()
+
 # ── Config ────────────────────────────────────────────────────────────────────
 GROQ_API_KEY  = os.environ.get("GROQ_API_KEY_B")
 LANGSMITH_API_KEY = os.environ.get("LANGSMITH_API_KEY")
 os.environ["LANGSMITH_TRACING"]  = "true"
-os.environ["LANGSMITH_PROJECT"]  = "Quality_Grounded_Epsidoic_Memory"
+os.environ["LANGSMITH_PROJECT"]  = "GREM"
 os.environ["LANGCHAIN_CALLBACKS_BACKGROUND"] = "false"
 os.environ["LANGSMITH_ENDPOINT"] = "https://apac.api.smith.langchain.com"
 os.environ["LANGSMITH_COMPRESSION"]      = "false"
 os.environ["LANGSMITH_BATCH_SIZE"]       = "1"
-
 MODEL         = "llama-3.3-70b-versatile"
 MAX_TOKENS    = 80
 TEMPERATURE   = 0.0
@@ -81,11 +81,37 @@ def save(results):
         json.dump(results, f, indent=2)
 
 
+def call_groq(client, system_prompt, user_prompt):
+    return client.chat.completions.create(
+        model=MODEL,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user",   "content": user_prompt},
+        ],
+        max_tokens=MAX_TOKENS,
+        temperature=TEMPERATURE,
+    )
+
+
+@traceable(name="agent_b_record", tags=["agent_b", "groq"])
+def process_record(client, system_prompt, record):
+    user_prompt   = build_user_prompt(record)
+    resp          = call_groq(client, system_prompt, user_prompt)
+    chain_summary = resp.choices[0].message.content.strip()
+    tokens_used   = resp.usage.total_tokens
+    return chain_summary, tokens_used
+
+
 def main():
     if not GROQ_API_KEY:
         raise ValueError("GROQ_API_KEY_B environment variable not set")
 
-    client        = Groq(api_key=GROQ_API_KEY)
+    client = wrap_openai(
+    OpenAI(
+        api_key=GROQ_API_KEY,
+        base_url="https://api.groq.com/openai/v1"
+        )
+    )
     system_prompt = load_system_prompt()
 
     with open(INPUT_PATH, "r") as f:
@@ -103,35 +129,22 @@ def main():
         print(f"  Gold titles: {record['gold_titles']}")
         print(f"  Top-1 wrong: {record['top1_wrong_title']}")
 
-        user_prompt = build_user_prompt(record)
-
         try:
-            resp = client.chat.completions.create(
-                model=MODEL,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user",   "content": user_prompt},
-                ],
-                max_tokens=MAX_TOKENS,
-                temperature=TEMPERATURE,
-            )
-
-            chain_summary = resp.choices[0].message.content.strip()
-            tokens_used   = resp.usage.total_tokens
+            chain_summary, tokens_used = process_record(client, system_prompt, record)
 
             print(f"  ChainSummary ({tokens_used} tok): {chain_summary}")
 
             results.append({
-                "id":            record["id"],
-                "query":         record["query"],
-                "gold_titles":   record["gold_titles"],
-                "top1_wrong":    record["top1_wrong_title"],
+                "id":              record["id"],
+                "query":           record["query"],
+                "gold_titles":     record["gold_titles"],
+                "top1_wrong":      record["top1_wrong_title"],
                 "first_gold_rank": record["first_gold_rank"],
-                "chain_summary": chain_summary,
-                "tokens_used":   tokens_used,
-                "model":         MODEL,
-                "agent":         "B",
-                "timestamp":     time.time(),
+                "chain_summary":   chain_summary,
+                "tokens_used":     tokens_used,
+                "model":           MODEL,
+                "agent":           "B",
+                "timestamp":       time.time(),
             })
 
             save(results)

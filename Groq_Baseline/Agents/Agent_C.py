@@ -11,8 +11,9 @@ Writes: outputs/agent_c_out.json  (saves after every record)
 import json
 import os
 import time
-from groq import Groq
 from langsmith import traceable
+from openai import OpenAI
+from langsmith.wrappers import wrap_openai
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -21,13 +22,13 @@ load_dotenv()
 GROQ_API_KEY  = os.environ.get("GROQ_API_KEY_C")
 LANGSMITH_API_KEY = os.environ.get("LANGSMITH_API_KEY")
 os.environ["LANGSMITH_TRACING"]  = "true"
-os.environ["LANGSMITH_PROJECT"]  = "Quality_Grounded_Epsidoic_Memory"
+os.environ["LANGSMITH_PROJECT"]  = "GREM"
 os.environ["LANGCHAIN_CALLBACKS_BACKGROUND"] = "false"
 os.environ["LANGSMITH_ENDPOINT"] = "https://apac.api.smith.langchain.com"
 os.environ["LANGSMITH_COMPRESSION"]      = "false"
 os.environ["LANGSMITH_BATCH_SIZE"]       = "1"
 MODEL         = "llama-3.3-70b-versatile"
-MAX_TOKENS    = 120       # 80 for summary + relevant line
+MAX_TOKENS    = 120
 TEMPERATURE   = 0.0
 RATE_LIMIT_S  = 1.0
 A_PATH        = "outputs/agent_a_out.json"
@@ -61,10 +62,6 @@ relevant: false"""
 
 
 def parse_relevant_flag(raw_output):
-    """
-    Extract relevant flag from last line of agent C output.
-    Returns (chunk_summary, relevant_bool)
-    """
     lines = [l.strip() for l in raw_output.strip().split("\n") if l.strip()]
 
     relevant = None
@@ -77,21 +74,15 @@ def parse_relevant_flag(raw_output):
             break
 
     if relevant is None:
-        # Agent didn't follow format — default to false, flag it
-        print(f"  WARNING: could not parse relevant flag from output. Defaulting to false.")
+        print(f"  WARNING: could not parse relevant flag. Defaulting to false.")
         print(f"  Raw output: {raw_output}")
-        relevant = False
-        chunk_summary = raw_output
-    else:
-        # Strip the relevant line from summary
-        summary_lines = []
-        for line in lines:
-            if line.lower() in ("relevant: true", "relevant: false"):
-                continue
-            summary_lines.append(line)
-        chunk_summary = " ".join(summary_lines).strip()
+        return raw_output, False
 
-    return chunk_summary, relevant
+    summary_lines = [
+        line for line in lines
+        if line.lower() not in ("relevant: true", "relevant: false")
+    ]
+    return " ".join(summary_lines).strip(), relevant
 
 
 def load_checkpoint():
@@ -109,25 +100,49 @@ def save(results):
         json.dump(results, f, indent=2)
 
 
+def call_groq(client, system_prompt, query, entity_summary, chain_summary):
+    user_prompt = build_user_prompt(query, entity_summary, chain_summary)
+    return client.chat.completions.create(
+        model=MODEL,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user",   "content": user_prompt},
+        ],
+        max_tokens=MAX_TOKENS,
+        temperature=TEMPERATURE,
+    )
+
+
+@traceable(name="agent_c_record", tags=["agent_c", "groq"])
+def process_record(client, system_prompt, a, b):
+    resp                    = call_groq(client, system_prompt, a["query"], a["entity_summary"], b["chain_summary"])
+    raw_output              = resp.choices[0].message.content.strip()
+    tokens_used             = resp.usage.total_tokens
+    chunk_summary, relevant = parse_relevant_flag(raw_output)
+    return chunk_summary, relevant, tokens_used
+
+
 def main():
     if not GROQ_API_KEY:
         raise ValueError("GROQ_API_KEY_C environment variable not set")
 
-    client        = Groq(api_key=GROQ_API_KEY)
+    client = wrap_openai(
+    OpenAI(
+        api_key=GROQ_API_KEY,
+        base_url="https://api.groq.com/openai/v1"
+        )
+    )
     system_prompt = load_system_prompt()
 
-    # Load A and B outputs, index by id
     with open(A_PATH, "r") as f:
         a_index = {r["id"]: r for r in json.load(f)}
 
     with open(B_PATH, "r") as f:
         b_index = {r["id"]: r for r in json.load(f)}
 
-    # Only process records where BOTH A and B completed
     common_ids = sorted(set(a_index.keys()) & set(b_index.keys()))
     print(f"[agent_c] Records with both A and B complete: {len(common_ids)}")
 
-    # Warn about missing
     only_a = set(a_index.keys()) - set(b_index.keys())
     only_b = set(b_index.keys()) - set(a_index.keys())
     if only_a: print(f"  WARNING: {len(only_a)} records only in A (missing B)")
@@ -147,46 +162,29 @@ def main():
         print(f"  EntitySummary: {a['entity_summary']}")
         print(f"  ChainSummary : {b['chain_summary']}")
 
-        user_prompt = build_user_prompt(a["query"], a["entity_summary"], b["chain_summary"])
-
         try:
-            resp = client.chat.completions.create(
-                model=MODEL,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user",   "content": user_prompt},
-                ],
-                max_tokens=MAX_TOKENS,
-                temperature=TEMPERATURE,
-            )
-
-            raw_output  = resp.choices[0].message.content.strip()
-            tokens_used = resp.usage.total_tokens
-
-            chunk_summary, relevant = parse_relevant_flag(raw_output)
+            chunk_summary, relevant, tokens_used = process_record(client, system_prompt, a, b)
 
             print(f"  ChunkSummary : {chunk_summary}")
             print(f"  Relevant     : {relevant}")
             print(f"  Tokens used  : {tokens_used}")
 
             results.append({
-                "id":            record_id,
-                "query":         a["query"],
-                "gold_titles":   a["gold_titles"],
-                "top1_wrong":    a["top1_wrong"],
+                "id":              record_id,
+                "query":           a["query"],
+                "gold_titles":     a["gold_titles"],
+                "top1_wrong":      a["top1_wrong"],
                 "first_gold_rank": a["first_gold_rank"],
-                # Agent outputs
-                "entity_summary": a["entity_summary"],
-                "chain_summary":  b["chain_summary"],
-                "chunk_summary":  chunk_summary,
-                "relevant":       relevant,
-                # Meta
-                "tokens_used":    tokens_used,
-                "tokens_a":       a["tokens_used"],
-                "tokens_b":       b["tokens_used"],
-                "model":          MODEL,
-                "agent":          "C",
-                "timestamp":      time.time(),
+                "entity_summary":  a["entity_summary"],
+                "chain_summary":   b["chain_summary"],
+                "chunk_summary":   chunk_summary,
+                "relevant":        relevant,
+                "tokens_used":     tokens_used,
+                "tokens_a":        a["tokens_used"],
+                "tokens_b":        b["tokens_used"],
+                "model":           MODEL,
+                "agent":           "C",
+                "timestamp":       time.time(),
             })
 
             save(results)

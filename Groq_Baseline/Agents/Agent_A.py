@@ -14,10 +14,10 @@ Set your API key:
 import json
 import os
 import time
-from groq import Groq
-
+from langsmith import traceable
+from openai import OpenAI
+from langsmith.wrappers import wrap_openai
 from dotenv import load_dotenv
-
 load_dotenv()
 
 
@@ -25,25 +25,24 @@ load_dotenv()
 GROQ_API_KEY  = os.environ.get("GROQ_API_KEY_A")
 LANGSMITH_API_KEY = os.environ.get("LANGSMITH_API_KEY")
 os.environ["LANGSMITH_TRACING"]  = "true"
-os.environ["LANGSMITH_PROJECT"]  = "Quality_Grounded_Epsidoic_Memory"
+os.environ["LANGSMITH_PROJECT"]  = "GREM"
 os.environ["LANGCHAIN_CALLBACKS_BACKGROUND"] = "false"
 os.environ["LANGSMITH_ENDPOINT"] = "https://apac.api.smith.langchain.com"
 os.environ["LANGSMITH_COMPRESSION"]      = "false"
 os.environ["LANGSMITH_BATCH_SIZE"]       = "1"
 MODEL         = "llama-3.3-70b-versatile"
-MAX_TOKENS    = 80        # slightly over 60 to allow natural sentence completion
-TEMPERATURE   = 0.0       # deterministic
-RATE_LIMIT_S  = 1.0       # seconds between calls — adjust per account tier
+MAX_TOKENS    = 80
+TEMPERATURE   = 0.0
+RATE_LIMIT_S  = 1.0
 INPUT_PATH    = os.environ.get("INPUT_PATH", r"C:\Users\Aarya-2\Documents\ADOG\MARLOW AI\QGED_CODEX_M_L\GREM\Groq_Baseline\outputs\subset_bridge_200.json")
 OUTPUT_PATH   = "outputs/agent_a_out.json"
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-
 def load_system_prompt():
     with open(r"C:\Users\Aarya-2\Documents\ADOG\MARLOW AI\QGED_CODEX_M_L\GREM\Groq_Baseline\Context\Context.md", "r") as f:
         context = f.read()
-    with open(r"C:\Users\Aarya-2\Documents\ADOG\MARLOW AI\QGED_CODEX_M_L\GREM\Groq_Baseline\Agents\Agent_A.py", "r") as f:
+    with open(r"C:\Users\Aarya-2\Documents\ADOG\MARLOW AI\QGED_CODEX_M_L\GREM\Groq_Baseline\Context\Agent_A.md", "r") as f:  # FIX: was Agent_A.py
         agent = f.read()
     return context + "\n\n" + agent
 
@@ -55,9 +54,9 @@ def build_user_prompt(record):
         for t in record["titles_and_first_sentence"]
     ])
 
-    bridge = ", ".join(record["bridge_candidates"]) or "None detected"
-    answer_only = ", ".join(record["only_answer_has"]) or "None"
-    wrong_only  = ", ".join(record["only_wrong_has"]) or "None"
+    bridge      = ", ".join(record["bridge_candidates"]) or "None detected"
+    answer_only = ", ".join(record["only_answer_has"])   or "None"
+    wrong_only  = ", ".join(record["only_wrong_has"])    or "None"
 
     return f"""Query: {record["query"]}
 
@@ -86,11 +85,37 @@ def save(results):
         json.dump(results, f, indent=2)
 
 
+def call_groq(client, system_prompt, user_prompt):
+    return client.chat.completions.create(
+        model=MODEL,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user",   "content": user_prompt},
+        ],
+        max_tokens=MAX_TOKENS,
+        temperature=TEMPERATURE,
+    )
+
+
+@traceable(name="agent_a_record", tags=["agent_a", "groq"])
+def process_record(client, system_prompt, record):
+    user_prompt    = build_user_prompt(record)
+    resp           = call_groq(client, system_prompt, user_prompt)
+    entity_summary = resp.choices[0].message.content.strip()
+    tokens_used    = resp.usage.total_tokens
+    return entity_summary, tokens_used
+
+
 def main():
     if not GROQ_API_KEY:
         raise ValueError("GROQ_API_KEY_A environment variable not set")
 
-    client        = Groq(api_key=GROQ_API_KEY)
+    client = wrap_openai(
+    OpenAI(
+        api_key=GROQ_API_KEY,
+        base_url="https://api.groq.com/openai/v1"
+        )
+    )
     system_prompt = load_system_prompt()
 
     with open(INPUT_PATH, "r") as f:
@@ -108,35 +133,22 @@ def main():
         print(f"  Gold titles: {record['gold_titles']}")
         print(f"  Top-1 wrong: {record['top1_wrong_title']}")
 
-        user_prompt = build_user_prompt(record)
-
         try:
-            resp = client.chat.completions.create(
-                model=MODEL,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user",   "content": user_prompt},
-                ],
-                max_tokens=MAX_TOKENS,
-                temperature=TEMPERATURE,
-            )
-
-            entity_summary = resp.choices[0].message.content.strip()
-            tokens_used    = resp.usage.total_tokens
+            entity_summary, tokens_used = process_record(client, system_prompt, record)
 
             print(f"  EntitySummary ({tokens_used} tok): {entity_summary}")
 
             results.append({
-                "id":             record["id"],
-                "query":          record["query"],
-                "gold_titles":    record["gold_titles"],
-                "top1_wrong":     record["top1_wrong_title"],
-                "first_gold_rank":record["first_gold_rank"],
-                "entity_summary": entity_summary,
-                "tokens_used":    tokens_used,
-                "model":          MODEL,
-                "agent":          "A",
-                "timestamp":      time.time(),
+                "id":              record["id"],
+                "query":           record["query"],
+                "gold_titles":     record["gold_titles"],
+                "top1_wrong":      record["top1_wrong_title"],
+                "first_gold_rank": record["first_gold_rank"],
+                "entity_summary":  entity_summary,
+                "tokens_used":     tokens_used,
+                "model":           MODEL,
+                "agent":           "A",
+                "timestamp":       time.time(),
             })
 
             save(results)
