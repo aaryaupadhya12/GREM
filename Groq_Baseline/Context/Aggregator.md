@@ -131,6 +131,17 @@ but belongs to a different entity or time period.
 Label the dominant failure mode. If multiple apply, label the one that
 most directly caused the ranking failure.
 
+## Failure Mode Selection Guide
+
+Use these rules to select the correct label before writing your JSON:
+
+  first_gold_rank <= 3 AND second gold rank > 6  →  likely chain_break
+  top-1 wrong shares a proper noun with query    →  likely distractor_confusion
+  top-1 wrong repeats query keywords only        →  likely entity_drift
+  top-10 has no semantic overlap to gold chain   →  likely relevance_miss
+
+Apply the first rule that matches. These rules take priority over intuition.
+
 ---
 
 ## Scoring Philosophy
