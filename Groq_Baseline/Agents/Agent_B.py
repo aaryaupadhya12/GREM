@@ -26,7 +26,7 @@ MODEL         = "llama-3.3-70b-versatile"
 MAX_TOKENS    = 80
 TEMPERATURE   = 0.0
 RATE_LIMIT_S  = 1.0
-INPUT_PATH    = os.environ.get("INPUT_PATH", "outputs/subset_bridge_full.json")
+INPUT_PATH    = os.environ.get("INPUT_PATH", r"C:\Users\Aarya-2\Documents\ADOG\MARLOW AI\QGED_CODEX_M_L\GREM\Groq_Baseline\outputs\subset_bridge_200.json")
 OUTPUT_PATH   = "outputs/agent_b_out.json"
 # ─────────────────────────────────────────────────────────────────────────────
 
