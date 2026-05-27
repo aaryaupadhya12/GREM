@@ -1,88 +1,90 @@
 """
-agent_c.py — Context Relevance Validator
+aggregator.py — Grounded Reasoning Synthesiser
 
 Usage:
-    python agent_c.py
+    python aggregator.py
 
-Reads:  outputs/agent_a_out.json + outputs/agent_b_out.json
-Writes: outputs/agent_c_out.json  (saves after every record)
+Reads:  outputs/quality_gated.json  (passed array only)
+Writes: outputs/aggregator_out.json (saves after every record)
+
+Records with q_final > 0.5 AND resolved == true → MongoDB
+Everything else                                  → session RAM
+
+Set your API key:
+    export GROQ_API_KEY_AGG="gsk_..."
 """
 
 import json
 import os
 import time
-from langsmith import traceable
 from openai import OpenAI
+from langsmith import traceable
 from langsmith.wrappers import wrap_openai
 from dotenv import load_dotenv
 load_dotenv()
 
-
 # ── Config ────────────────────────────────────────────────────────────────────
-GROQ_API_KEY  = os.environ.get("GROQ_API_KEY_C")
+GROQ_API_KEY      = os.environ.get("GROQ_API_KEY_AGG")
 LANGSMITH_API_KEY = os.environ.get("LANGSMITH_API_KEY")
-os.environ["LANGSMITH_TRACING"]  = "true"
-os.environ["LANGSMITH_PROJECT"]  = "GREM"
-os.environ["LANGCHAIN_CALLBACKS_BACKGROUND"] = "false"
-os.environ["LANGSMITH_ENDPOINT"] = "https://apac.api.smith.langchain.com"
-os.environ["LANGSMITH_COMPRESSION"]      = "false"
-os.environ["LANGSMITH_BATCH_SIZE"]       = "1"
-MODEL         = "llama-3.3-70b-versatile"
-MAX_TOKENS    = 120
-TEMPERATURE   = 0.0
-RATE_LIMIT_S  = 1.0
-A_PATH        = "outputs/agent_a_out.json"
-B_PATH        = "outputs/agent_b_out.json"
-OUTPUT_PATH   = "outputs/agent_c_out.json"
+os.environ["LANGSMITH_TRACING"]               = "true"
+os.environ["LANGSMITH_PROJECT"]               = "GREM"
+os.environ["LANGCHAIN_CALLBACKS_BACKGROUND"]  = "false"
+os.environ["LANGSMITH_ENDPOINT"]              = "https://apac.api.smith.langchain.com"
+os.environ["LANGSMITH_COMPRESSION"]           = "false"
+os.environ["LANGSMITH_BATCH_SIZE"]            = "1"
+MODEL          = "llama-3.3-70b-versatile"
+MAX_TOKENS     = 350        # aggregator_chain ~260 + JSON structure overhead
+TEMPERATURE    = 0.0
+RATE_LIMIT_S   = 1.0
+INPUT_PATH     = r"C:\Users\Aarya-2\Documents\ADOG\MARLOW AI\QGED_CODEX_M_L\GREM\Groq_Baseline\outputs\quality_gated.json"
+OUTPUT_PATH    = "outputs/aggregator_out.json"
 # ─────────────────────────────────────────────────────────────────────────────
 
 
 def load_system_prompt():
     with open(r"C:\Users\Aarya-2\Documents\ADOG\MARLOW AI\QGED_CODEX_M_L\GREM\Groq_Baseline\Context\Context.md", "r") as f:
         context = f.read()
-    with open(r"C:\Users\Aarya-2\Documents\ADOG\MARLOW AI\QGED_CODEX_M_L\GREM\Groq_Baseline\Context\Agent_C.md", "r") as f:
-        agent = f.read()
-    return context + "\n\n" + agent
+    with open(r"C:\Users\Aarya-2\Documents\ADOG\MARLOW AI\QGED_CODEX_M_L\GREM\Groq_Baseline\Context\Aggregator.md", "r") as f:
+        aggregator = f.read()
+    return context + "\n\n" + aggregator
 
 
-def build_user_prompt(query, entity_summary, chain_summary):
-    return f"""Query: {query}
+def build_user_prompt(record):
+    return f"""Query: {record["query"]}
 
 Agent A EntitySummary:
-{entity_summary}
+{record["entity_summary"]}
 
 Agent B ChainSummary:
-{chain_summary}
+{record["chain_summary"]}
 
-Do Agent A and Agent B agree on which documents should rank 1 and 2?
-Write your ChunkSummary in UNDER 80 TOKENS.
-Your LAST LINE must be exactly one of:
-relevant: true
-relevant: false"""
+Agent C ChunkSummary:
+{record["chunk_summary"]}
+
+Produce your JSON output now."""
 
 
-def parse_relevant_flag(raw_output):
-    lines = [l.strip() for l in raw_output.strip().split("\n") if l.strip()]
-
-    relevant = None
-    for line in reversed(lines):
-        if line.lower() == "relevant: true":
-            relevant = True
-            break
-        elif line.lower() == "relevant: false":
-            relevant = False
-            break
-
-    if relevant is None:
-        print(f"  WARNING: could not parse relevant flag. Defaulting to false.")
-        print(f"  Raw output: {raw_output}")
-        return raw_output, False
-
-    summary_lines = [
-        line for line in lines
-        if line.lower() not in ("relevant: true", "relevant: false")
-    ]
-    return " ".join(summary_lines).strip(), relevant
+def parse_aggregator_output(raw_output):
+    try:
+        clean  = raw_output.strip().strip("```json").strip("```").strip()
+        parsed = json.loads(clean)
+        return {
+            "aggregator_chain": parsed.get("aggregator_chain", ""),
+            "q_final":          float(parsed.get("q_final", 0.0)),
+            "resolved":         bool(parsed.get("resolved", False)),
+            "failure_mode":     parsed.get("failure_mode", "unknown"),
+            "parse_error":      False,
+        }
+    except Exception as e:
+        print(f"  WARNING: JSON parse failed — {e}")
+        print(f"  Raw: {raw_output[:200]}")
+        return {
+            "aggregator_chain": raw_output,
+            "q_final":          0.0,
+            "resolved":         False,
+            "failure_mode":     "parse_error",
+            "parse_error":      True,
+        }
 
 
 def load_checkpoint():
@@ -100,8 +102,8 @@ def save(results):
         json.dump(results, f, indent=2)
 
 
-def call_groq(client, system_prompt, query, entity_summary, chain_summary):
-    user_prompt = build_user_prompt(query, entity_summary, chain_summary)
+def call_groq(client, system_prompt, record):
+    user_prompt = build_user_prompt(record)
     return client.chat.completions.create(
         model=MODEL,
         messages=[
@@ -113,78 +115,98 @@ def call_groq(client, system_prompt, query, entity_summary, chain_summary):
     )
 
 
-@traceable(name="agent_c_record", tags=["agent_c", "groq"])
-def process_record(client, system_prompt, a, b):
-    resp                    = call_groq(client, system_prompt, a["query"], a["entity_summary"], b["chain_summary"])
-    raw_output              = resp.choices[0].message.content.strip()
-    tokens_used             = resp.usage.total_tokens
-    chunk_summary, relevant = parse_relevant_flag(raw_output)
-    return chunk_summary, relevant, tokens_used
+@traceable(name="aggregator_record", run_type="chain", tags=["aggregator", "groq"])
+def process_record(client, system_prompt, record):
+    resp        = call_groq(client, system_prompt, record)
+    raw_output  = resp.choices[0].message.content.strip()
+    tokens_used = resp.usage.total_tokens
+    parsed      = parse_aggregator_output(raw_output)
+    return parsed, tokens_used
 
 
 def main():
     if not GROQ_API_KEY:
-        raise ValueError("GROQ_API_KEY_C environment variable not set")
+        raise ValueError("GROQ_API_KEY_AGG environment variable not set")
 
     client = wrap_openai(
-    OpenAI(
-        api_key=GROQ_API_KEY,
-        base_url="https://api.groq.com/openai/v1"
+        OpenAI(
+            api_key=GROQ_API_KEY,
+            base_url="https://api.groq.com/openai/v1"
         )
     )
     system_prompt = load_system_prompt()
 
-    with open(A_PATH, "r") as f:
-        a_index = {r["id"]: r for r in json.load(f)}
+    # ── Load passed records from quality gate ─────────────────────────────────
+    with open(INPUT_PATH, "r") as f:
+        data = json.load(f)
 
-    with open(B_PATH, "r") as f:
-        b_index = {r["id"]: r for r in json.load(f)}
-
-    common_ids = sorted(set(a_index.keys()) & set(b_index.keys()))
-    print(f"[agent_c] Records with both A and B complete: {len(common_ids)}")
-
-    only_a = set(a_index.keys()) - set(b_index.keys())
-    only_b = set(b_index.keys()) - set(a_index.keys())
-    if only_a: print(f"  WARNING: {len(only_a)} records only in A (missing B)")
-    if only_b: print(f"  WARNING: {len(only_b)} records only in B (missing A)")
+    passed_records = data["passed"]        # extract passed array — NOT the root object
+    print(f"[aggregator] Loaded {len(passed_records)} passed records from quality gate")
 
     results, done_ids = load_checkpoint()
 
-    for i, record_id in enumerate(common_ids):
-        if record_id in done_ids:
+    # ── Counters for summary ──────────────────────────────────────────────────
+    mongo_count = 0
+    ram_count   = 0
+    error_count = 0
+
+    for i, record in enumerate(passed_records):
+        if record["id"] in done_ids:
             continue
 
-        a = a_index[record_id]
-        b = b_index[record_id]
-
-        print(f"\n[{i+1}/{len(common_ids)}] {record_id}")
-        print(f"  Query        : {a['query'][:90]}")
-        print(f"  EntitySummary: {a['entity_summary']}")
-        print(f"  ChainSummary : {b['chain_summary']}")
+        print(f"\n[{i+1}/{len(passed_records)}] {record['id']}")
+        print(f"  Query      : {record['query'][:90]}")
+        print(f"  Gold titles: {record['gold_titles']}")
 
         try:
-            chunk_summary, relevant, tokens_used = process_record(client, system_prompt, a, b)
+            parsed, tokens_used = process_record(client, system_prompt, record)
 
-            print(f"  ChunkSummary : {chunk_summary}")
-            print(f"  Relevant     : {relevant}")
-            print(f"  Tokens used  : {tokens_used}")
+            # ── Quality writeback decision ────────────────────────────────────
+            goes_to_mongo = parsed["q_final"] > 0.5 and parsed["resolved"]
+            storage_route = "mongodb" if goes_to_mongo else "session_ram"
+
+            if goes_to_mongo:
+                mongo_count += 1
+            else:
+                ram_count += 1
+
+            if parsed["parse_error"]:
+                error_count += 1
+
+            print(f"  Chain      : {parsed['aggregator_chain'][:120]}")
+            print(f"  q_final    : {parsed['q_final']}")
+            print(f"  resolved   : {parsed['resolved']}")
+            print(f"  failure    : {parsed['failure_mode']}")
+            print(f"  storage    : {storage_route}")
+            print(f"  tokens     : {tokens_used}")
 
             results.append({
-                "id":              record_id,
-                "query":           a["query"],
-                "gold_titles":     a["gold_titles"],
-                "top1_wrong":      a["top1_wrong"],
-                "first_gold_rank": a["first_gold_rank"],
-                "entity_summary":  a["entity_summary"],
-                "chain_summary":   b["chain_summary"],
-                "chunk_summary":   chunk_summary,
-                "relevant":        relevant,
-                "tokens_used":     tokens_used,
-                "tokens_a":        a["tokens_used"],
-                "tokens_b":        b["tokens_used"],
-                "model":           MODEL,
-                "agent":           "C",
-                "timestamp":       time.time(),
+                # Identity
+                "id":               record["id"],
+                "query":            record["query"],
+                "gold_titles":      record["gold_titles"],
+                "top1_wrong":       record["top1_wrong"],
+                "first_gold_rank":  record["first_gold_rank"],
+                # Agent summaries (carried forward)
+                "entity_summary":   record["entity_summary"],
+                "chain_summary":    record["chain_summary"],
+                "chunk_summary":    record["chunk_summary"],
+                # Aggregator output
+                "aggregator_chain": parsed["aggregator_chain"],
+                "q_final":          parsed["q_final"],
+                "resolved":         parsed["resolved"],
+                "failure_mode":     parsed["failure_mode"],
+                "parse_error":      parsed["parse_error"],
+                # Routing
+                "storage_route":    storage_route,
+                # Meta
+                "tokens_used":      tokens_used,
+                "tokens_a":         record.get("tokens_a", 0),
+                "tokens_b":         record.get("tokens_b", 0),
+                "tokens_c":         record.get("tokens_used", 0),
+                "model":            MODEL,
+                "agent":            "aggregator",
+                "timestamp":        time.time(),
             })
 
             save(results)
@@ -197,7 +219,26 @@ def main():
 
         time.sleep(RATE_LIMIT_S)
 
-    print(f"\n[agent_c] Done — {len(results)} records saved to {OUTPUT_PATH}")
+    # ── Final summary ─────────────────────────────────────────────────────────
+    total = len(results)
+    print(f"\n{'='*60}")
+    print(f"  AGGREGATOR COMPLETE")
+    print(f"{'='*60}")
+    print(f"  Total processed : {total}")
+    print(f"  → MongoDB       : {mongo_count}  ({100*mongo_count/total:.1f}% if total else 0%)")
+    print(f"  → Session RAM   : {ram_count}   ({100*ram_count/total:.1f}% if total else 0%)")
+    print(f"  Parse errors    : {error_count}")
+    print(f"\n  Saved → {OUTPUT_PATH}")
+
+    if error_count > 5:
+        print(f"\n  WARNING: {error_count} parse errors — review Aggregator.md JSON output instruction")
+
+    # ── Failure mode distribution ─────────────────────────────────────────────
+    from collections import Counter
+    modes = Counter(r["failure_mode"] for r in results if not r["parse_error"])
+    print(f"\n  Failure mode distribution:")
+    for mode, count in modes.most_common():
+        print(f"    {mode}: {count}")
 
 
 if __name__ == "__main__":
