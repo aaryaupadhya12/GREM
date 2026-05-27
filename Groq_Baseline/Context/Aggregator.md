@@ -16,6 +16,7 @@ It is a structured supervision signal used to train a cross-encoder reranker.
 ## What You Receive
 
 - The original query
+- first_gold_rank — the rank position of the first gold document in BM25 results
 - Agent A EntitySummary — entity overlap reasoning (≤60 tokens)
 - Agent B ChainSummary — bridge chain reasoning (≤60 tokens)
 - Agent C ChunkSummary — context relevance validation (≤80 tokens)
@@ -33,14 +34,12 @@ Your job is to synthesise, score, and label — not to re-verify.
 
 A structured JSON object with exactly these fields:
 
-```json
 {
   "aggregator_chain": "...",
   "q_final": 0.00,
   "resolved": true,
   "failure_mode": "..."
 }
-```
 
 Do not produce prose. Do not add commentary outside the JSON object.
 
@@ -67,24 +66,29 @@ A float between 0.0 and 1.0.
 
 This is the groundedness score for this record.
 
-Score HIGH (>0.8) when:
-- Agent A and B identified the same bridge entity
-- The two-hop chain is explicit and traceable
-- The failure mode is clearly diagnosable
-- The gold document titles are named explicitly
+## Scoring Method — Deduction From 1.0
 
-Score MEDIUM (0.5–0.8) when:
-- Agent A and B mostly agree but with minor inconsistencies
-- The bridge entity is implied but not explicitly named
-- The chain has one weak hop
+Start at 1.0 and apply deductions:
 
-Score LOW (<0.5) when:
-- Agent summaries are vague or contradictory
-- The failure mode cannot be diagnosed
-- Gold documents are not identifiable from the summaries
+  -0.15  bridge entity in A and B summaries differs or contradicts
+  -0.10  either gold title is not explicitly named in the summaries
+  -0.10  first_gold_rank > 5  (gold was buried deep, weak signal)
+  -0.08  failure mode required two competing explanations to diagnose
+  -0.05  chain has a weak or implicit second hop
+  -0.05  top-1 wrong document explanation is vague or missing
+
+Apply ALL relevant deductions. Do not round up.
+
+## Expected Score Range By Case Type
+
+  first_gold_rank = 2, both agents agree, bridge explicit  →  0.88 – 0.93
+  first_gold_rank = 3-4, mostly agree, one weak hop        →  0.75 – 0.85
+  first_gold_rank = 5-6, partial agreement                 →  0.65 – 0.75
+  first_gold_rank = 7-10, agents diverge or chain unclear  →  0.45 – 0.65
 
 Records with q_final < 0.5 do NOT enter episodic memory.
 Score honestly. Inflated scores produce low-quality reranker training data.
+Every record does NOT deserve a high score.
 
 ### resolved
 Boolean. true or false.
@@ -137,12 +141,13 @@ Your q_final score determines which records train the reranker.
 High-quality episodic memory produces a high-quality reranker.
 Low-quality records that pass through inflate training noise.
 
-The Lucky Rate / Ground Rate diagnostic measures how many reranker
-predictions are causally explained by episodic memory versus lucky
-parametric recall.
+The expected q_final distribution across many records is:
+  ~20% of records score above 0.88
+  ~50% of records score between 0.65 and 0.88
+  ~30% of records score below 0.65
 
-A high Ground Rate requires honest, precise q_final scoring from you.
-Do not pass records that do not deserve to pass.
+If you are giving every record a score above 0.88 you are not discriminating.
+Apply the deduction table strictly.
 
 ---
 
@@ -150,11 +155,31 @@ Do not pass records that do not deserve to pass.
 
 Return only valid JSON. No preamble. No explanation. No markdown fences.
 
-Example:
+## Examples
+
+### Example 1 — High score (first_gold_rank=2, full agreement)
 
 {
-  "aggregator_chain": "BM25 ranked 'Ritz-Carlton Jakarta' first due to repeated hotel keyword frequency. Bridge entity: Oberoi. Query references Oberoi family → The Oberoi Group (bridge document, rank 3) → head office Delhi. Gold documents: 'Oberoi family' (rank 2) and 'The Oberoi Group' (rank 3). Both gold documents must rank in top-2. Failure caused by lexical distractor with high hotel term density masking the entity-specific bridge relationship.",
-  "q_final": 0.91,
+  "aggregator_chain": "BM25 ranked 'Roy Koerner' first due to polar exploration keyword overlap. Bridge entity: Mike Stroud. Query references Mike Stroud partnership → Mike Stroud (physician, rank 5) → Ranulph Fiennes (rank 2). Gold documents: 'Ranulph Fiennes' and 'Mike Stroud (physician)' must rank in top-2. Failure caused by 'Roy Koerner' sharing polar explorer surface entities but lacking Mike Stroud partnership relationship.",
+  "q_final": 0.90,
   "resolved": true,
   "failure_mode": "entity_drift"
+}
+
+### Example 2 — Medium score (first_gold_rank=6, one weak hop)
+
+{
+  "aggregator_chain": "BM25 ranked 'Anna Simpson' first due to actress keyword frequency. Bridge entity: Paige O'Hara. Query references American actress born 1956 → Paige O'Hara (rank 10) → Something There from Beauty and the Beast (rank 6). Gold documents: 'Paige O'Hara' and 'Something There' must rank in top-2. Second hop weak — Beauty and the Beast connection implied not explicit in summaries.",
+  "q_final": 0.72,
+  "resolved": true,
+  "failure_mode": "entity_drift"
+}
+
+### Example 3 — Low score (first_gold_rank=8, agents diverge)
+
+{
+  "aggregator_chain": "BM25 failure on 1919 flag query. Agent A identifies Irish flag entity. Agent B diverges to French flag. Bridge entity ambiguous — 1919 adoption year shared by multiple flags. Gold documents named but chain between query and correct flag document unclear from summaries.",
+  "q_final": 0.48,
+  "resolved": false,
+  "failure_mode": "distractor_confusion"
 }

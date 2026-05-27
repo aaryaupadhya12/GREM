@@ -51,6 +51,7 @@ def load_system_prompt():
 
 def build_user_prompt(record):
     return f"""Query: {record["query"]}
+First gold rank: {record["first_gold_rank"]}
 
 Agent A EntitySummary:
 {record["entity_summary"]}
