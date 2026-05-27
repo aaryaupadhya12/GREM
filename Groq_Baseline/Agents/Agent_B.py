@@ -15,7 +15,7 @@ from groq import Groq
 
 # ── Config ────────────────────────────────────────────────────────────────────
 GROQ_API_KEY  = os.environ.get("GROQ_API_KEY_B")
-MODEL         = "qwen/qwen3-32b"
+MODEL         = "llama-3.3-70b-versatile"
 MAX_TOKENS    = 80
 TEMPERATURE   = 0.0
 RATE_LIMIT_S  = 1.0
