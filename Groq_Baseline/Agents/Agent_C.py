@@ -12,9 +12,20 @@ import json
 import os
 import time
 from groq import Groq
+from langsmith import traceable
+from dotenv import load_dotenv
+load_dotenv()
+
 
 # ── Config ────────────────────────────────────────────────────────────────────
 GROQ_API_KEY  = os.environ.get("GROQ_API_KEY_C")
+LANGSMITH_API_KEY = os.environ.get("LANGSMITH_API_KEY")
+os.environ["LANGSMITH_TRACING"]  = "true"
+os.environ["LANGSMITH_PROJECT"]  = "Quality_Grounded_Epsidoic_Memory"
+os.environ["LANGCHAIN_CALLBACKS_BACKGROUND"] = "false"
+os.environ["LANGSMITH_ENDPOINT"] = "https://apac.api.smith.langchain.com"
+os.environ["LANGSMITH_COMPRESSION"]      = "false"
+os.environ["LANGSMITH_BATCH_SIZE"]       = "1"
 MODEL         = "llama-3.3-70b-versatile"
 MAX_TOKENS    = 120       # 80 for summary + relevant line
 TEMPERATURE   = 0.0
