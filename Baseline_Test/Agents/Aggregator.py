@@ -36,22 +36,24 @@ MODEL          = "llama-3.3-70b-versatile"
 MAX_TOKENS     = 350        # aggregator_chain ~260 + JSON structure overhead
 TEMPERATURE    = 0.0
 RATE_LIMIT_S   = 1.0
-INPUT_PATH     = r"C:\Users\Aarya-2\Documents\ADOG\MARLOW AI\QGED_CODEX_M_L\GREM\Groq_Baseline\outputs\quality_gated.json"
+INPUT_PATH     = r"C:\Users\Aarya-2\Documents\ADOG\MARLOW AI\QGED_CODEX_M_L\GREM\Baseline_Test\outputs\quality_gated.json"
 OUTPUT_PATH    = "outputs/aggregator_out.json"
 # ─────────────────────────────────────────────────────────────────────────────
 
 
 def load_system_prompt():
-    with open(r"C:\Users\Aarya-2\Documents\ADOG\MARLOW AI\QGED_CODEX_M_L\GREM\Groq_Baseline\Context\Context.md", "r") as f:
+    with open(r"C:\Users\Aarya-2\Documents\ADOG\MARLOW AI\QGED_CODEX_M_L\GREM\Baseline_Test\Context\Context.md", "r") as f:
         context = f.read()
-    with open(r"C:\Users\Aarya-2\Documents\ADOG\MARLOW AI\QGED_CODEX_M_L\GREM\Groq_Baseline\Context\Aggregator.md", "r") as f:
+    with open(r"C:\Users\Aarya-2\Documents\ADOG\MARLOW AI\QGED_CODEX_M_L\GREM\Baseline_Test\Context\Aggregator.md", "r") as f:
         aggregator = f.read()
     return context + "\n\n" + aggregator
 
 
 def build_user_prompt(record):
+    gold_ranks_str = ", ".join(str(r) for r in record.get("gold_ranks", [record["first_gold_rank"]]))
     return f"""Query: {record["query"]}
 First gold rank: {record["first_gold_rank"]}
+All gold ranks:  {gold_ranks_str}
 
 Agent A EntitySummary:
 {record["entity_summary"]}
@@ -188,6 +190,7 @@ def main():
                 "gold_titles":      record["gold_titles"],
                 "top1_wrong":       record["top1_wrong"],
                 "first_gold_rank":  record["first_gold_rank"],
+                "gold_ranks":       record.get("gold_ranks", [record["first_gold_rank"]]),
                 # Agent summaries (carried forward)
                 "entity_summary":   record["entity_summary"],
                 "chain_summary":    record["chain_summary"],

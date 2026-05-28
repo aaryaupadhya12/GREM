@@ -15,8 +15,8 @@ import json
 import os
 
 
-INPUT_PATH  = r"C:\Users\Aarya-2\Documents\ADOG\MARLOW AI\QGED_CODEX_M_L\GREM\Groq_Baseline\Agents\outputs\agent_c_out.json"
-OUTPUT_PATH = r"C:\Users\Aarya-2\Documents\ADOG\MARLOW AI\QGED_CODEX_M_L\GREM\Groq_Baseline\outputs\quality_gated.json"
+INPUT_PATH  = r"C:\Users\Aarya-2\Documents\ADOG\MARLOW AI\QGED_CODEX_M_L\GREM\Baseline_Test\Agents\outputs\agent_c_out.json"
+OUTPUT_PATH = r"C:\Users\Aarya-2\Documents\ADOG\MARLOW AI\QGED_CODEX_M_L\GREM\Baseline_Test\outputs\quality_gated.json"
 
 
 def print_record(r, label=""):
