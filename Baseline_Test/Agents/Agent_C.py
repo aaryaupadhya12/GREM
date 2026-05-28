@@ -24,7 +24,7 @@ LANGSMITH_API_KEY = os.environ.get("LANGSMITH_API_KEY")
 os.environ["LANGSMITH_TRACING"]  = "true"
 os.environ["LANGSMITH_PROJECT"]  = "GREM"
 os.environ["LANGCHAIN_CALLBACKS_BACKGROUND"] = "false"
-os.environ["LANGSMITH_ENDPOINT"] = "https://apac.api.smith.langchain.com"
+os.environ["LANGSMITH_ENDPOINT"] = "https://api.smith.langchain.com"
 os.environ["LANGSMITH_COMPRESSION"]      = "false"
 os.environ["LANGSMITH_BATCH_SIZE"]       = "1"
 MODEL         = "llama-3.3-70b-versatile"
@@ -38,9 +38,9 @@ OUTPUT_PATH   = "outputs/agent_c_out.json"
 
 
 def load_system_prompt():
-    with open(r"C:\Users\Aarya-2\Documents\ADOG\MARLOW AI\QGED_CODEX_M_L\GREM\Groq_Baseline\Context\Context.md", "r") as f:
+    with open(r"C:\Users\Aarya-2\Documents\ADOG\MARLOW AI\QGED_CODEX_M_L\GREM\Baseline_Test\Context\Context.md", "r") as f:
         context = f.read()
-    with open(r"C:\Users\Aarya-2\Documents\ADOG\MARLOW AI\QGED_CODEX_M_L\GREM\Groq_Baseline\Context\Agent_C.md", "r") as f:
+    with open(r"C:\Users\Aarya-2\Documents\ADOG\MARLOW AI\QGED_CODEX_M_L\GREM\Baseline_Test\Context\Agent_C.md", "r") as f:
         agent = f.read()
     return context + "\n\n" + agent
 
