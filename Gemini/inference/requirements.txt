@@ -1,0 +1,34 @@
+# ─────────────────────────────────────────────────────────────
+# requirements.txt — Quality-Gated Multi-Hop Retrieval
+# Install: pip install -r requirements.txt
+# ─────────────────────────────────────────────────────────────
+
+# ── Core retrieval ───────────────────────────────────────────
+rank-bm25==0.2.2              # BM25Okapi lexical retrieval
+faiss-cpu==1.8.0              # FAISS flat index for dense retrieval
+                              # GPU machine? swap to: faiss-gpu==1.8.0
+
+# ── Embeddings + cross-encoder ───────────────────────────────
+sentence-transformers==3.0.1  # all-MiniLM-L6-v2 + CrossEncoder
+                              # covers both DenseRetriever and
+                              # BERTCrossEncoderReranker
+
+# ── MongoDB ───────────────────────────────────────────────────
+pymongo[srv]==4.7.2           # [srv] required for Atlas URI scheme
+
+# ── LLM APIs (free tier) ─────────────────────────────────────
+groq==0.9.0                   # Groq API — llama-3.3-70b, 14400 req/day free
+
+# ── LangChain ─────────────────────────────────────────────────
+langchain-core==0.3.0
+
+# ── Utilities ─────────────────────────────────────────────────
+numpy>=1.24
+python-dotenv==1.0.1          # loads .env file
+tqdm                          # progress bars during FAISS indexing
+
+# ── Paid services (install now, only activated when
+#    use_paid_services=True — no credits used until then) ──────
+google-cloud-aiplatform       # Vertex AI
+google-generativeai           # Gemini API
+vertexai                      # high-level Vertex AI SDK
