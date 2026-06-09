@@ -24,3 +24,6 @@ faiss-cpu
 python-dotenv
 numpy
 pandas
+
+google-auth 
+google-cloud-aiplatform
