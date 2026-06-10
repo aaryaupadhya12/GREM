@@ -20,7 +20,7 @@ TEST_PATH    = r"C:\Users\Aarya-2\Documents\ADOG\MARLOW AI\QGED_CODEX_M_L\GREM\G
 MODEL_PATH   = r"C:\Users\Aarya-2\Documents\ADOG\MARLOW AI\QGED_CODEX_M_L\Re-ranker_output"
 METRICS_OUT  = r"/outputs/metrics_evaluate.json"
 
-USE_EPISODIC_HINTS = True   # Inject Atlas Vector Search hints into query
+USE_EPISODIC_HINTS = False   # Inject Atlas Vector Search hints into query
 EPISODIC_K         = 3
 # ───────────────────────────────────────────────────────────────
 
