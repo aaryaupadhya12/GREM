@@ -1,46 +1,62 @@
 """
-agent_c.py — Context Relevance Validator
+agent_c.py — Context Relevance Validator (Vertex AI / Gemini)
 
 Usage:
     python agent_c.py
-
-Reads:  outputs/agent_a_out.json + outputs/agent_b_out.json
-Writes: outputs/agent_c_out.json  (saves after every record)
 """
 
 import json
 import os
 import time
+import google.auth
+import google.auth.transport.requests
 from langsmith import traceable
-from openai import OpenAI
 from langsmith.wrappers import wrap_openai
+from openai import OpenAI
 from dotenv import load_dotenv
 load_dotenv()
 
-
 # ── Config ────────────────────────────────────────────────────────────────────
-GROQ_API_KEY  = os.environ.get("GROQ_API_KEY_C")
+PROJECT_ID = os.environ["GCP_PROJECT_ID"]
+LOCATION   = os.environ.get("GCP_LOCATION", "us-central1")
+
 LANGSMITH_API_KEY = os.environ.get("LANGSMITH_API_KEY")
-os.environ["LANGSMITH_TRACING"]  = "true"
-os.environ["LANGSMITH_PROJECT"]  = "GREM"
+os.environ["LANGSMITH_TRACING"]              = "true"
+os.environ["LANGSMITH_PROJECT"]              = "GREM"
 os.environ["LANGCHAIN_CALLBACKS_BACKGROUND"] = "false"
-os.environ["LANGSMITH_ENDPOINT"] = "https://api.smith.langchain.com"
-os.environ["LANGSMITH_COMPRESSION"]      = "false"
-os.environ["LANGSMITH_BATCH_SIZE"]       = "1"
-MODEL         = "llama-3.3-70b-versatile"
+os.environ["LANGSMITH_ENDPOINT"]             = "https://api.smith.langchain.com"
+os.environ["LANGSMITH_COMPRESSION"]          = "false"
+os.environ["LANGSMITH_BATCH_SIZE"]           = "1"
+
+MODEL         = "google/gemini-2.5-flash-lite"
 MAX_TOKENS    = 120
 TEMPERATURE   = 0.0
-RATE_LIMIT_S  = 1.0
+RATE_LIMIT_S  = 0.3
+TOKEN_REFRESH_EVERY = 50
 A_PATH        = "outputs/agent_a_out.json"
 B_PATH        = "outputs/agent_b_out.json"
 OUTPUT_PATH   = "outputs/agent_c_out.json"
 # ─────────────────────────────────────────────────────────────────────────────
 
 
+def get_fresh_client():
+    credentials, _ = google.auth.default(
+        scopes=["https://www.googleapis.com/auth/cloud-platform"]
+    )
+    auth_req = google.auth.transport.requests.Request()
+    credentials.refresh(auth_req)
+    return wrap_openai(
+        OpenAI(
+            api_key=credentials.token,
+            base_url=f"https://{LOCATION}-aiplatform.googleapis.com/v1beta1/projects/{PROJECT_ID}/locations/{LOCATION}/endpoints/openapi/"
+        )
+    )
+
+
 def load_system_prompt():
-    with open(r"C:\Users\Aarya-2\Documents\ADOG\MARLOW AI\QGED_CODEX_M_L\GREM\Baseline_Test\Context\Context.md", "r") as f:
+    with open(r"C:\Users\Aarya-2\Documents\ADOG\MARLOW AI\QGED_CODEX_M_L\GREM\Gemini\Context\Context.md", "r") as f:
         context = f.read()
-    with open(r"C:\Users\Aarya-2\Documents\ADOG\MARLOW AI\QGED_CODEX_M_L\GREM\Baseline_Test\Context\Agent_C.md", "r") as f:
+    with open(r"C:\Users\Aarya-2\Documents\ADOG\MARLOW AI\QGED_CODEX_M_L\GREM\Gemini\Context\Agent_C.md", "r") as f:
         agent = f.read()
     return context + "\n\n" + agent
 
@@ -100,7 +116,7 @@ def save(results):
         json.dump(results, f, indent=2)
 
 
-def call_groq(client, system_prompt, query, entity_summary, chain_summary):
+def call_gemini(client, system_prompt, query, entity_summary, chain_summary):
     user_prompt = build_user_prompt(query, entity_summary, chain_summary)
     return client.chat.completions.create(
         model=MODEL,
@@ -113,9 +129,9 @@ def call_groq(client, system_prompt, query, entity_summary, chain_summary):
     )
 
 
-@traceable(name="agent_c_record", tags=["agent_c", "groq"])
+@traceable(name="agent_c_record", run_type="chain", tags=["agent_c", "gemini"])
 def process_record(client, system_prompt, a, b):
-    resp                    = call_groq(client, system_prompt, a["query"], a["entity_summary"], b["chain_summary"])
+    resp                    = call_gemini(client, system_prompt, a["query"], a["entity_summary"], b["chain_summary"])
     raw_output              = resp.choices[0].message.content.strip()
     tokens_used             = resp.usage.total_tokens
     chunk_summary, relevant = parse_relevant_flag(raw_output)
@@ -123,15 +139,7 @@ def process_record(client, system_prompt, a, b):
 
 
 def main():
-    if not GROQ_API_KEY:
-        raise ValueError("GROQ_API_KEY_C environment variable not set")
-
-    client = wrap_openai(
-    OpenAI(
-        api_key=GROQ_API_KEY,
-        base_url="https://api.groq.com/openai/v1"
-        )
-    )
+    client        = get_fresh_client()
     system_prompt = load_system_prompt()
 
     with open(A_PATH, "r") as f:
@@ -142,6 +150,7 @@ def main():
 
     common_ids = sorted(set(a_index.keys()) & set(b_index.keys()))
     print(f"[agent_c] Records with both A and B complete: {len(common_ids)}")
+    print(f"[agent_c] Model: {MODEL}")
 
     only_a = set(a_index.keys()) - set(b_index.keys())
     only_b = set(b_index.keys()) - set(a_index.keys())
@@ -153,6 +162,10 @@ def main():
     for i, record_id in enumerate(common_ids):
         if record_id in done_ids:
             continue
+
+        if i > 0 and i % TOKEN_REFRESH_EVERY == 0:
+            client = get_fresh_client()
+            print(f"[token] Refreshed at record {i}")
 
         a = a_index[record_id]
         b = b_index[record_id]

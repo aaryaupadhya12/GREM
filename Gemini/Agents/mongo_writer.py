@@ -11,7 +11,7 @@ def get_collection():
     return db["episodic_memory"]
 
 def write_verified_chains(aggregator_output_path):
-    with open(aggregator_output_path, "r") as f:
+    with open(aggregator_output_path, "r", encoding= "utf-8") as f:
         records = json.load(f)
 
     mongo_records = [
@@ -44,4 +44,4 @@ def write_verified_chains(aggregator_output_path):
         print("All records already in Atlas")
 
 if __name__ == "__main__":
-    write_verified_chains(r"C:\Users\Aarya-2\Documents\ADOG\MARLOW AI\QGED_CODEX_M_L\GREM\Baseline_Test\Agents\outputs\aggregator_out.json")
+    write_verified_chains(r"C:\Users\Aarya-2\Documents\ADOG\MARLOW AI\QGED_CODEX_M_L\GREM\Gemini\Agents\outputs\aggregator_out.json")

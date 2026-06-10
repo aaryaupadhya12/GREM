@@ -1,22 +1,18 @@
 """
-aggregator.py — Grounded Reasoning Synthesiser
+aggregator.py — Grounded Reasoning Synthesiser (Vertex AI / Gemini)
 
 Usage:
     python aggregator.py
 
-Reads:  outputs/quality_gated.json  (passed array only)
-Writes: outputs/aggregator_out.json (saves after every record)
-
 Records with q_final > 0.5 AND resolved == true → MongoDB
 Everything else                                  → session RAM
-
-Set your API key:
-    export GROQ_API_KEY_AGG="gsk_..."
 """
 
 import json
 import os
 import time
+import google.auth
+import google.auth.transport.requests
 from openai import OpenAI
 from langsmith import traceable
 from langsmith.wrappers import wrap_openai
@@ -24,36 +20,49 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # ── Config ────────────────────────────────────────────────────────────────────
-GROQ_API_KEY      = os.environ.get("GROQ_API_KEY_AGG")
-LANGSMITH_API_KEY = os.environ.get("LANGSMITH_API_KEY")
-os.environ["LANGSMITH_TRACING"]               = "true"
-os.environ["LANGSMITH_PROJECT"]               = "GREM"
-os.environ["LANGCHAIN_CALLBACKS_BACKGROUND"]  = "false"
-os.environ["LANGSMITH_ENDPOINT"]              = "https://api.smith.langchain.com"
-os.environ["LANGSMITH_COMPRESSION"]           = "false"
-os.environ["LANGSMITH_BATCH_SIZE"]            = "1"
-MODEL          = "llama-3.3-70b-versatile"
-MAX_TOKENS     = 350        # aggregator_chain ~260 + JSON structure overhead
+PROJECT_ID = os.environ["GCP_PROJECT_ID"]
+LOCATION   = os.environ.get("GCP_LOCATION", "us-central1")
+
+MODEL          = "google/gemini-2.5-flash-lite"
+MAX_TOKENS     = 3000
 TEMPERATURE    = 0.0
-RATE_LIMIT_S   = 1.0
-INPUT_PATH     = r"C:\Users\Aarya-2\Documents\ADOG\MARLOW AI\QGED_CODEX_M_L\GREM\Baseline_Test\outputs\quality_gated.json"
+RATE_LIMIT_S   = 0.3
+TOKEN_REFRESH_EVERY = 50
+INPUT_PATH     = r"C:\Users\Aarya-2\Documents\ADOG\MARLOW AI\QGED_CODEX_M_L\GREM\Gemini\outputs\quality_gated.json"
 OUTPUT_PATH    = "outputs/aggregator_out.json"
 # ─────────────────────────────────────────────────────────────────────────────
 
 
+def get_fresh_client():
+    credentials, _ = google.auth.default(
+        scopes=["https://www.googleapis.com/auth/cloud-platform"]
+    )
+    auth_req = google.auth.transport.requests.Request()
+    credentials.refresh(auth_req)
+    return wrap_openai(
+        OpenAI(
+            api_key=credentials.token,
+            base_url=f"https://{LOCATION}-aiplatform.googleapis.com/v1beta1/projects/{PROJECT_ID}/locations/{LOCATION}/endpoints/openapi/"
+        )
+    )
+
+
 def load_system_prompt():
-    with open(r"C:\Users\Aarya-2\Documents\ADOG\MARLOW AI\QGED_CODEX_M_L\GREM\Baseline_Test\Context\Context.md", "r") as f:
+    with open(r"C:\Users\Aarya-2\Documents\ADOG\MARLOW AI\QGED_CODEX_M_L\GREM\Gemini\Context\Context.md", "r", encoding="utf-8") as f:
         context = f.read()
-    with open(r"C:\Users\Aarya-2\Documents\ADOG\MARLOW AI\QGED_CODEX_M_L\GREM\Baseline_Test\Context\Aggregator.md", "r") as f:
+    with open(r"C:\Users\Aarya-2\Documents\ADOG\MARLOW AI\QGED_CODEX_M_L\GREM\Gemini\Context\Aggregator.md", "r", encoding="utf-8") as f:
         aggregator = f.read()
     return context + "\n\n" + aggregator
 
 
 def build_user_prompt(record):
-    gold_ranks_str = ", ".join(str(r) for r in record.get("gold_ranks", [record["first_gold_rank"]]))
+    gold_ranks_str = ", ".join(
+        str(r) for r in record.get("gold_ranks", [record["first_gold_rank"]])
+    )
+
     return f"""Query: {record["query"]}
 First gold rank: {record["first_gold_rank"]}
-All gold ranks:  {gold_ranks_str}
+All gold ranks: {gold_ranks_str}
 
 Agent A EntitySummary:
 {record["entity_summary"]}
@@ -64,12 +73,32 @@ Agent B ChainSummary:
 Agent C ChunkSummary:
 {record["chunk_summary"]}
 
-Produce your JSON output now."""
+Produce your JSON output now. No markdown fences. Start with {{ and end with }}."""
 
 
 def parse_aggregator_output(raw_output):
+    """Robust JSON parser — handles markdown fences, prefixes, truncation."""
     try:
-        clean  = raw_output.strip().strip("```json").strip("```").strip()
+        clean = raw_output.strip()
+
+        # Strip markdown fences if present
+        if clean.startswith("```"):
+            # Remove first line (```json or ```)
+            if "\n" in clean:
+                clean = clean.split("\n", 1)[1]
+            else:
+                clean = clean.replace("```json", "").replace("```", "")
+        if clean.endswith("```"):
+            clean = clean.rsplit("```", 1)[0]
+
+        # Extract JSON between first { and last }
+        start = clean.find("{")
+        end   = clean.rfind("}")
+        if start == -1 or end == -1 or end < start:
+            raise ValueError("No valid JSON braces found")
+
+        clean = clean[start:end + 1].strip()
+
         parsed = json.loads(clean)
         return {
             "aggregator_chain": parsed.get("aggregator_chain", ""),
@@ -80,7 +109,7 @@ def parse_aggregator_output(raw_output):
         }
     except Exception as e:
         print(f"  WARNING: JSON parse failed — {e}")
-        print(f"  Raw: {raw_output[:200]}")
+        print(f"  Raw: {raw_output[:300]}")
         return {
             "aggregator_chain": raw_output,
             "q_final":          0.0,
@@ -92,7 +121,7 @@ def parse_aggregator_output(raw_output):
 
 def load_checkpoint():
     if os.path.exists(OUTPUT_PATH):
-        with open(OUTPUT_PATH, "r") as f:
+        with open(OUTPUT_PATH, "r", encoding="utf-8") as f:
             results = json.load(f)
         done_ids = {r["id"] for r in results}
         print(f"[checkpoint] Resuming — {len(done_ids)} records already done")
@@ -101,11 +130,11 @@ def load_checkpoint():
 
 
 def save(results):
-    with open(OUTPUT_PATH, "w") as f:
-        json.dump(results, f, indent=2)
+    with open(OUTPUT_PATH, "w", encoding="utf-8") as f:
+        json.dump(results, f, indent=2, ensure_ascii=False)
 
 
-def call_groq(client, system_prompt, record):
+def call_gemini(client, system_prompt, record):
     user_prompt = build_user_prompt(record)
     return client.chat.completions.create(
         model=MODEL,
@@ -115,12 +144,10 @@ def call_groq(client, system_prompt, record):
         ],
         max_tokens=MAX_TOKENS,
         temperature=TEMPERATURE,
+        response_format={"type": "json_object"},   # ADD THIS LINE
     )
-
-
-@traceable(name="aggregator_record", run_type="chain", tags=["aggregator", "groq"])
 def process_record(client, system_prompt, record):
-    resp        = call_groq(client, system_prompt, record)
+    resp        = call_gemini(client, system_prompt, record)
     raw_output  = resp.choices[0].message.content.strip()
     tokens_used = resp.usage.total_tokens
     parsed      = parse_aggregator_output(raw_output)
@@ -128,27 +155,18 @@ def process_record(client, system_prompt, record):
 
 
 def main():
-    if not GROQ_API_KEY:
-        raise ValueError("GROQ_API_KEY_AGG environment variable not set")
-
-    client = wrap_openai(
-        OpenAI(
-            api_key=GROQ_API_KEY,
-            base_url="https://api.groq.com/openai/v1"
-        )
-    )
+    client        = get_fresh_client()
     system_prompt = load_system_prompt()
 
-    # ── Load passed records from quality gate ─────────────────────────────────
-    with open(INPUT_PATH, "r") as f:
+    with open(INPUT_PATH, "r", encoding="utf-8") as f:
         data = json.load(f)
 
-    passed_records = data["passed"]        # extract passed array — NOT the root object
+    passed_records = data["passed"]
     print(f"[aggregator] Loaded {len(passed_records)} passed records from quality gate")
+    print(f"[aggregator] Model: {MODEL}")
 
     results, done_ids = load_checkpoint()
 
-    # ── Counters for summary ──────────────────────────────────────────────────
     mongo_count = 0
     ram_count   = 0
     error_count = 0
@@ -157,6 +175,10 @@ def main():
         if record["id"] in done_ids:
             continue
 
+        if i > 0 and i % TOKEN_REFRESH_EVERY == 0:
+            client = get_fresh_client()
+            print(f"[token] Refreshed at record {i}")
+
         print(f"\n[{i+1}/{len(passed_records)}] {record['id']}")
         print(f"  Query      : {record['query'][:90]}")
         print(f"  Gold titles: {record['gold_titles']}")
@@ -164,7 +186,6 @@ def main():
         try:
             parsed, tokens_used = process_record(client, system_prompt, record)
 
-            # ── Quality writeback decision ────────────────────────────────────
             goes_to_mongo = parsed["q_final"] > 0.5 and parsed["resolved"]
             storage_route = "mongodb" if goes_to_mongo else "session_ram"
 
@@ -184,26 +205,21 @@ def main():
             print(f"  tokens     : {tokens_used}")
 
             results.append({
-                # Identity
                 "id":               record["id"],
                 "query":            record["query"],
                 "gold_titles":      record["gold_titles"],
                 "top1_wrong":       record["top1_wrong"],
                 "first_gold_rank":  record["first_gold_rank"],
                 "gold_ranks":       record.get("gold_ranks", [record["first_gold_rank"]]),
-                # Agent summaries (carried forward)
                 "entity_summary":   record["entity_summary"],
                 "chain_summary":    record["chain_summary"],
                 "chunk_summary":    record["chunk_summary"],
-                # Aggregator output
                 "aggregator_chain": parsed["aggregator_chain"],
                 "q_final":          parsed["q_final"],
                 "resolved":         parsed["resolved"],
                 "failure_mode":     parsed["failure_mode"],
                 "parse_error":      parsed["parse_error"],
-                # Routing
                 "storage_route":    storage_route,
-                # Meta
                 "tokens_used":      tokens_used,
                 "tokens_a":         record.get("tokens_a", 0),
                 "tokens_b":         record.get("tokens_b", 0),
@@ -223,21 +239,20 @@ def main():
 
         time.sleep(RATE_LIMIT_S)
 
-    # ── Final summary ─────────────────────────────────────────────────────────
     total = len(results)
     print(f"\n{'='*60}")
     print(f"  AGGREGATOR COMPLETE")
     print(f"{'='*60}")
     print(f"  Total processed : {total}")
-    print(f"  → MongoDB       : {mongo_count}  ({100*mongo_count/total:.1f}% if total else 0%)")
-    print(f"  → Session RAM   : {ram_count}   ({100*ram_count/total:.1f}% if total else 0%)")
+    if total > 0:
+        print(f"  → MongoDB       : {mongo_count}  ({100*mongo_count/total:.1f}%)")
+        print(f"  → Session RAM   : {ram_count}   ({100*ram_count/total:.1f}%)")
     print(f"  Parse errors    : {error_count}")
     print(f"\n  Saved → {OUTPUT_PATH}")
 
     if error_count > 5:
         print(f"\n  WARNING: {error_count} parse errors — review Aggregator.md JSON output instruction")
 
-    # ── Failure mode distribution ─────────────────────────────────────────────
     from collections import Counter
     modes = Counter(r["failure_mode"] for r in results if not r["parse_error"])
     print(f"\n  Failure mode distribution:")
