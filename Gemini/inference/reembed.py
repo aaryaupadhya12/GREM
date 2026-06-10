@@ -38,7 +38,7 @@ from sentence_transformers import SentenceTransformer
 load_dotenv()
 
 MONGO_URI  = os.environ.get("MONGO_URI", "")
-DB_NAME    = "hotpotqa_rag"
+DB_NAME    = "GREM"
 COLLECTION = "episodic_memory"
 MODEL_NAME = "all-MiniLM-L6-v2"
 DIM        = 384
@@ -55,7 +55,7 @@ def run():
     print("Connecting to MongoDB Atlas...")
     client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=10_000)
     client.admin.command("ping")
-    print("Connected ✓\n")
+    print("Connected\n")
 
     col     = client[DB_NAME][COLLECTION]
     records = list(col.find({}, {"_id": 1, "query": 1}))
@@ -90,7 +90,7 @@ def run():
     for rec, emb in zip(records, embeddings):
         result = col.update_one(
             {"_id": rec["_id"]},
-            {"$set": {"embedding": emb.tolist()}}
+            {"$set": {"query_embedding": emb.tolist()}}
         )
         if result.modified_count:
             updated += 1
