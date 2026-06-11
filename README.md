@@ -118,43 +118,53 @@ memory to recover BM25 failures.
 ---
 
 ## Repository Structure
+
+```text
 GREM/
-├── BM25_Baseline/                  # Initial baseline experiments
+│
+├── BM25_Baseline/                    # Initial baseline experiments
 │   ├── BM25_Pipeline.py
 │   └── BM25_results.md
-├── Data/                           # Dataset preparation
+│
+├── Data/                             # Dataset preparation
 │   └── Pull_dataset.py
-├── Gemini/                         # Main submission code
+│
+├── Gemini/                           # Main submission code
+│   │
 │   ├── Agents/
-│   │   ├── Agent_A.py              # Entity Overlap Reasoner (Gemini Flash-Lite)
-│   │   ├── Agent_B.py              # Bridge Chain Reasoner (Gemini Flash-Lite)
-│   │   ├── Agent_C.py              # Golden Chunk Validator (Gemini Flash-Lite)
-│   │   ├── Aggregator.py           # Quality scorer (Gemini Flash)
-│   │   ├── mongo_writer.py         # Writes verified chains to Atlas via MCP
-│   │   ├── Mongodb_mcp_integration.py  # MongoDB MCP Server client
-│   │   ├── precompute_UI.py        # Caches 5 demo traces for frontend
-│   │   ├── quality_gate.py         # q_final scoring logic
-│   │   └── outputs/                # aggregator_out.json, metrics_final.json
-│   ├── Context/                    # Agent system prompts
+│   │   ├── Agent_A.py                # Entity Overlap Reasoner (Gemini Flash-Lite)
+│   │   ├── Agent_B.py                # Bridge Chain Reasoner (Gemini Flash-Lite)
+│   │   ├── Agent_C.py                # Golden Chunk Validator (Gemini Flash-Lite)
+│   │   ├── Aggregator.py             # Quality scorer (Gemini Flash)
+│   │   ├── mongo_writer.py           # Writes verified chains to Atlas via MCP
+│   │   ├── mongodb_mcp_integration.py# MongoDB MCP server client
+│   │   ├── precompute_UI.py          # Caches demo traces for frontend
+│   │   ├── quality_gate.py           # Final scoring logic
+│   │   └── outputs/                  # aggregator_out.json, metrics_final.json
+│   │
+│   ├── Context/                      # Agent system prompts
 │   │   ├── Agent_A.md
 │   │   ├── Agent_B.md
 │   │   ├── Agent_C.md
 │   │   ├── Aggregator.md
 │   │   └── Context.md
-│   ├── Doc/                        # Migration notes and design docs
+│   │
+│   ├── Doc/                          # Migration notes and design docs
 │   │   ├── Gemini_Migration.md
 │   │   └── Gemini.md
-│   └── Inference/                  # Cross-encoder training and evaluation
+│   │
+│   └── Inference/                    # Cross-encoder training and evaluation
 │       ├── train_reranker.py
-│       ├── evaluate.py             # Adaptive Atlas evaluation
-│       └── outputs/                # train_split.json, test_split.json, model
-├── Images/                         # Architecture diagrams
-├── LICENSE                         # Apache 2.0
-├── README.md                       # This file
-├── requirements.txt                # Python dependencies
-└── .env.example                    # Required environment variables
-
----
+│       ├── evaluate.py               # Adaptive Atlas evaluation
+│       └── outputs/                  # train_split.json, test_split.json, model/
+│
+├── Images/                           # Architecture diagrams
+│
+├── LICENSE                           # Apache 2.0
+├── README.md                         # Project documentation
+├── requirements.txt                  # Python dependencies
+└── .env.example                      # Required environment variables
+```
 
 ## Setup and Run
 
