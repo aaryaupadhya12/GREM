@@ -1,7 +1,7 @@
 # Quality-Gated Multi-Hop Retrieval  
 ### Episodic Distillation for Verified RAG using Google Cloud + MongoDB Atlas
 
-![Training Pipeline](Images/Updated_Architecture.png)
+![Training Pipeline](Images/Arch.png)
 ---
 
 # Overview
