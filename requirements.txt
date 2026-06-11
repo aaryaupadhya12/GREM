@@ -1,29 +1,28 @@
+# ── Google Cloud / Gemini ──────────────────────────────────
+google-auth
+google-cloud-aiplatform
+google-generativeai
 
-# LangChain ecosystem
-langchain
-langchain-core
-langchain-community
-langchain-huggingface
-langchain-groq
+# ── MongoDB ────────────────────────────────────────────────
+pymongo
+dnspython
 
-# LangSmith
-langsmith==0.8.5
-
-# Groq SDK
-groq
-
-# Hugging Face
-huggingface_hub
-transformers
-datasets
-
+# ── ML / Re-ranker ─────────────────────────────────────────
+torch
 sentence-transformers
-faiss-cpu
+transformers
+huggingface_hub
 
-# Utilities
-python-dotenv
+# ── Data Processing ────────────────────────────────────────
 numpy
 pandas
+scikit-learn
+datasets
 
-google-auth 
-google-cloud-aiplatform
+# ── Observability ──────────────────────────────────────────
+langsmith
+
+# ── Utilities ──────────────────────────────────────────────
+python-dotenv
+requests
+tqdm
