@@ -160,7 +160,7 @@ GREM/
 │
 ├── Images/                           # Architecture diagrams
 │
-├── LICENSE                           # Apache 2.0
+├── LICENSE                           # MIT
 ├── README.md                         # Project documentation
 ├── requirements.txt                  # Python dependencies
 └── .env.example                      # Required environment variables
