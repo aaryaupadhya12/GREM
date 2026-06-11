@@ -6,7 +6,7 @@
 
 **Live Demo:** [grem-frontend34.vercel.app](https://grem-frontend34.vercel.app/)  
 **Hackathon:** Google Cloud Rapid Agent Hackathon — MongoDB Track  
-**License:** Apache 2.0
+**License:** MIT
 
 ![GREM Architecture](Images/Arch.png)
 
