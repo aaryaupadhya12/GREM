@@ -3,7 +3,6 @@
 Distilling multi-agent LLM reasoning into a small cross-encoder for multi-hop
 retrieval, with verified reasoning chains stored in MongoDB Atlas.
 
-Built for the Google Cloud Rapid Agent Hackathon (MongoDB Track), May–June 2026.
 
 **Demo:** [grem-frontend34.vercel.app](https://grem-frontend34.vercel.app/) · **License:** MIT
 
